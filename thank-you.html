@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Thank you — TechCapital Solutions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Outfit:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="index.html" class="brand">
+          <span class="brand-mark" aria-hidden="true">TC</span>
+          <span>TechCapital Solutions</span>
+        </a>
+        <a class="btn btn-secondary" href="index.html">Back to home</a>
+      </div>
+    </header>
+    <main class="container hero" style="padding-top: 4rem">
+      <h1>Message received</h1>
+      <p class="hero-lead">
+        Thanks for reaching out. We will review your inquiry and respond as soon as
+        we can.
+      </p>
+      <p class="hero-lead" id="submission-ref" hidden></p>
+      <div class="hero-actions">
+        <a class="btn" href="index.html">Return home</a>
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="container">
+        <p>&copy; TechCapital Solutions. All rights reserved.</p>
+      </div>
+    </footer>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var id = params.get("id");
+        if (!id) return;
+        var el = document.getElementById("submission-ref");
+        if (!el) return;
+        el.textContent = "Your reference number is #" + id + ".";
+        el.hidden = false;
+      })();
+    </script>
+  </body>
+</html>
