@@ -11,8 +11,12 @@ if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
 }
 
-const requiredEnv = [
-  "DATABASE_URL",
+/** When true, contact submissions are inserted into PostgreSQL. Default: off (email only). */
+const contactStoreInDb =
+  process.env.CONTACT_STORE_IN_DB === "true" ||
+  process.env.CONTACT_STORE_IN_DB === "1";
+
+const requiredSmtpEnv = [
   "SMTP_HOST",
   "SMTP_PORT",
   "SMTP_USER",
@@ -20,24 +24,37 @@ const requiredEnv = [
   "CONTACT_TO_EMAIL",
 ];
 
-const missingEnv = requiredEnv.filter((key) => !process.env[key]);
-if (missingEnv.length > 0) {
+const missingSmtp = requiredSmtpEnv.filter((key) => !process.env[key]);
+if (missingSmtp.length > 0) {
   console.warn(
-    "Missing environment variables:",
-    missingEnv.join(", "),
-    "- the contact API will fail until these are set."
+    "Missing SMTP environment variables:",
+    missingSmtp.join(", "),
+    "- the contact API cannot send email until these are set."
   );
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.PG_SSL === "true"
-      ? {
-          rejectUnauthorized: false,
-        }
-      : false,
-});
+if (contactStoreInDb && !process.env.DATABASE_URL) {
+  console.warn(
+    "CONTACT_STORE_IN_DB is enabled but DATABASE_URL is missing — contact saves will fail."
+  );
+}
+
+let pool = null;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl:
+      process.env.PG_SSL === "true"
+        ? {
+            rejectUnauthorized: false,
+          }
+        : false,
+  });
+} else if (contactStoreInDb) {
+  console.warn(
+    "DATABASE_URL is not set — enable CONTACT_STORE_IN_DB only after configuring PostgreSQL."
+  );
+}
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -147,6 +164,13 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({
+      ok: false,
+      message: "Database not configured (set DATABASE_URL).",
+    });
+  }
+
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
 
@@ -191,29 +215,46 @@ app.post("/api/contact", contactRateLimiter, async (req, res) => {
   }
 
   try {
-    const insertQuery = `
+    let submissionId = null;
+    let submittedAt = new Date().toISOString();
+
+    if (contactStoreInDb) {
+      if (!pool) {
+        return res.status(503).json({
+          ok: false,
+          message:
+            "Database storage is enabled but DATABASE_URL is not configured.",
+        });
+      }
+
+      const insertQuery = `
       INSERT INTO contact_submissions (name, email, company, interest, message)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, created_at
     `;
 
-    const insertValues = [
-      data.name,
-      data.email,
-      data.company || null,
-      data.interest,
-      data.message,
-    ];
+      const insertValues = [
+        data.name,
+        data.email,
+        data.company || null,
+        data.interest,
+        data.message,
+      ];
 
-    const dbResult = await pool.query(insertQuery, insertValues);
-    const submission = dbResult.rows[0];
+      const dbResult = await pool.query(insertQuery, insertValues);
+      const row = dbResult.rows[0];
+      submissionId = row.id;
+      submittedAt = row.created_at;
+    }
 
     const mailSubject = `New inquiry - TechCapital Solutions`;
     const mailText = [
       "A new contact form submission was received.",
       "",
-      `Submission ID: ${submission.id}`,
-      `Submitted At: ${submission.created_at}`,
+      contactStoreInDb
+        ? `Submission ID: ${submissionId}`
+        : "Submission ID: (not stored — CONTACT_STORE_IN_DB is disabled)",
+      `Submitted At: ${submittedAt}`,
       `Name: ${data.name}`,
       `Email: ${data.email}`,
       `Company: ${data.company || "(not provided)"}`,
@@ -231,7 +272,11 @@ app.post("/api/contact", contactRateLimiter, async (req, res) => {
       text: mailText,
     });
 
-    return res.status(200).json({ ok: true, id: submission.id });
+    return res.status(200).json({
+      ok: true,
+      id: submissionId,
+      stored: contactStoreInDb,
+    });
   } catch (err) {
     console.error("Contact submission error:", err);
     return res.status(500).json({
@@ -247,4 +292,9 @@ app.get("*", (_req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
+  console.log(
+    contactStoreInDb
+      ? "Contact: PostgreSQL storage + email enabled (CONTACT_STORE_IN_DB)"
+      : "Contact: email only — set CONTACT_STORE_IN_DB=true to persist submissions"
+  );
 });
