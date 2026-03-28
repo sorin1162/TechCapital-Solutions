@@ -1,11 +1,39 @@
 const path = require("path");
 const express = require("express");
+const cors = require("cors");
 const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.length === 0) {
+        console.warn(
+          "ALLOWED_ORIGINS is empty — CORS allows any origin. Set ALLOWED_ORIGINS in production (e.g. your GitHub Pages URL)."
+        );
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);

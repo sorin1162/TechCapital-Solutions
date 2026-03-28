@@ -1,4 +1,19 @@
 (function () {
+  function resolveContactEndpoint(formEl) {
+    var base = document.documentElement.getAttribute("data-api-base");
+    if (base && typeof base === "string") {
+      base = base.trim().replace(/\/$/, "");
+      if (base) {
+        return base + "/api/contact";
+      }
+    }
+    var action = formEl.getAttribute("action");
+    if (action && /^https?:\/\//i.test(action)) {
+      return action;
+    }
+    return action || "/api/contact";
+  }
+
   var toggle = document.querySelector(".nav-toggle");
   var nav = document.querySelector(".nav-links");
   var form = document.getElementById("contact-form");
@@ -33,7 +48,8 @@
       }
 
       try {
-        var response = await fetch(form.action, {
+        var endpoint = resolveContactEndpoint(form);
+        var response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -64,8 +80,18 @@
         }
         window.location.assign(nextUrl.href);
       } catch (_error) {
-        formStatus.textContent =
-          "We could not send your message right now. Please try again shortly.";
+        var configured =
+          document.documentElement.getAttribute("data-api-base") || "";
+        var localhost =
+          location.hostname === "localhost" ||
+          location.hostname === "127.0.0.1" ||
+          location.hostname === "";
+        var staticSiteNeedsApi = !String(configured).trim() && !localhost;
+        formStatus.textContent = staticSiteNeedsApi
+          ? "This site is static (e.g. GitHub Pages) — the contact API must run elsewhere. Set data-api-base on <html> to your API base URL, and ALLOWED_ORIGINS on the server to " +
+            location.origin +
+            "."
+          : "We could not send your message. Check the API URL, CORS (ALLOWED_ORIGINS), and SMTP, then try again.";
         formStatus.className = "form-status form-status--error";
       } finally {
         if (submitButton) {
