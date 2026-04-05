@@ -65,10 +65,14 @@
         }
 
         if (!response.ok) {
-          var apiMessage =
-            data && data.message
-              ? data.message
-              : "We could not send your message right now. Please try again shortly.";
+          var apiMessage = "We could not send your message right now. Please try again shortly.";
+          
+          if (data && data.message) {
+            apiMessage = data.message;
+          } else if (response.status === 404) {
+            apiMessage = "Backend API not found (404). Ensure you are running 'node server.js' and not a static server like Live Server.";
+          }
+
           formStatus.textContent = apiMessage;
           formStatus.className = "form-status form-status--error";
           return;
